@@ -107,6 +107,10 @@ local function joypadInputToString(input)
   return table.concat(ss, "|")
 end
 
+local function actionToString(action)
+  return joypadInputToString(decodeJoypadInput(action))
+end
+
 function log(f, msg)
   if f then
     print(msg)
@@ -145,6 +149,7 @@ mario_util = {
   bool2IntArray = bool2IntArray,
   decodeJoypadInput = decodeJoypadInput,
   joypadInputToString = joypadInputToString,
+  actionToString = actionToString,
   reverseTable = reverseTable,
   log = log,
   randSample = randSample,

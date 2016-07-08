@@ -6,11 +6,6 @@ require "mario_game"
 
 local _sandbox = mario_game.sandbox
 
-function _actionToString(a)
-  return mario_util.joypadInputToString(
-    mario_util.decodeJoypadInput(a))
-end
-
 local UctModel = {}
 
 function UctModel:new()
@@ -28,16 +23,19 @@ function UctModel:new()
       0x06, -- right + A
       0x05, -- right + B
     },
+
     num_skip_frames = 12,
+    result_actions = {},
+    
     min_num_visits_to_expand_node = 1,
     max_num_runs = 100,
-    max_depth = 80,    
-    uct_const = 100.0,
-    enable_debug = true,
+    max_depth = 60,    
+    mario_score_ceil = 200,
+    use_ucb1 = true,
     
     save_to = nil,
     log_file = nil,
-    result_actions = {},
+    enable_debug = true,
     
     _nodes = {},
     _num_saves = 0,
@@ -45,7 +43,7 @@ function UctModel:new()
     
     _depth = nil,
     _root_node = nil,
-    _root_stats = nil,
+    _root_mario_stats = nil,
     _run_trace = nil,
     _save = nil,
   }
@@ -62,7 +60,7 @@ end
 function UctModel:_takeAction(action)
   assert(action, "action must not be nil")
   _sandbox:advance(action, self.num_skip_frames)
-  self:_debugMessage(_actionToString(action))
+  self:_debugMessage(mario_util.actionToString(action))
 end
 
 function UctModel:_newNode(state)
@@ -78,8 +76,8 @@ function UctModel:_newArc()
   return {
     num_visits = 0,
     mean_x = 0.0,
-    mean_x2 = 0.0,
-    max_x = nil,
+    var_x = 0.0,
+    max_x = 0.0,
     child_node = nil,
   }
 end
@@ -134,25 +132,26 @@ function UctModel:_startSearch()
 
   self._depth = 0
   self._root_node = self:_getNode(self:_getState())
-  self._root_stats = _sandbox:getMarioStats()
+  self._root_mario_stats = _sandbox:getMarioStats()
   self._run_trace = {}
   self:_appendRunTrace(nil, self._root_node)
 end
 
 function UctModel:_treePolicy(node)
   self:_debugMessage("treePolicy")
-  while not _sandbox:isGameOver() do
+  while not _sandbox:isGameOver() and self._depth < self.max_depth do
     if node.num_arcs < #self.all_actions then
       if node == self._root_node or
          node.num_visits >= self.min_num_visits_to_expand_node then
+        self._depth = self._depth + 1
         return self:_expandNode(node)
       else
         return node
       end
     end
+    self._depth = self._depth + 1
     node = self:_bestChild(node)
   end
-  self:_debugMessage("game over")
   return node
 end
 
@@ -174,21 +173,31 @@ function UctModel:_expandNode(node)
   local untried_actions = self:_getUntriedActions(node)
   local action = untried_actions[torch.random(1, #untried_actions)]
   self:_takeAction(action)
+  -- create new node
   local child_node = self:_getNode(self:_getState())
+  -- create new arc
   local arc = self:_getArc(node, action)
   arc.child_node = child_node
+
   self:_appendRunTrace(arc, child_node)
   return child_node
 end
 
-function UctModel:_ucb(node, arc)
+local function _ucb(node, arc)
   assert(node.num_visits > 0 and arc.num_visits > 0, "ucb error: zero visits")
   return
-    arc.mean_x +
-    self.uct_const * math.sqrt(math.log(node.num_visits) / arc.num_visits)
+    arc.mean_x + math.sqrt(math.log(node.num_visits) * 2.0 / arc.num_visits)
 end
 
-function UctModel:_randActionAndArcs(node)
+local function _ucb1(node, arc)
+  assert(node.num_visits > 0 and arc.num_visits > 0, "ucb error: zero visits")
+  local tmp = math.log(node.num_visits) / arc.num_visits
+  local result = math.max(0.0, arc.var_x) + math.sqrt(2.0 * tmp)
+  result = arc.mean_x + math.sqrt(tmp * math.min(0.25, result))
+  return result
+end
+
+local function _randActionAndArcs(node)
   local action_and_arcs = {}
   for a, arc in pairs(node.arcs) do
     table.insert(action_and_arcs, {a, arc})
@@ -196,31 +205,41 @@ function UctModel:_randActionAndArcs(node)
   return mario_util.permute(action_and_arcs)
 end
 
-function UctModel:_bestChild(node)
-  self:_debugMessage("bestChild")
-  local max_ucb = nil
+local function _bestArc(node, metric_fn)
+  -- metric_fn(node, arc) returns a number
+  local max_metric = nil
   local key_action = nil
   local key_arc = nil
-  local action_and_arcs = self:_randActionAndArcs(node)
+  local action_and_arcs = _randActionAndArcs(node)
   for i, aa in ipairs(action_and_arcs) do
     local a, arc = aa[1], aa[2]
-    local ucb = self:_ucb(node, arc)
-    if not max_ucb or max_ucb < ucb then
-      max_ucb, key_action, key_arc = ucb, a, arc
+    local metric = metric_fn(node, arc)
+    if metric and (not max_metric or max_metric < metric) then
+      max_metric, key_action, key_arc = metric, a, arc
     end
   end
-  self:_takeAction(key_action)
-  local child_node = key_arc.child_node
-  self:_appendRunTrace(key_arc, child_node)
+  return max_metric, key_action, key_arc
+end
+
+function UctModel:_bestChild(node)
+  self:_debugMessage("bestChild")
+  local max_ucb, action, arc = _bestArc(node, self.use_ucb1 and _ucb1 or _ucb)
+  self:_takeAction(action)
+  local child_node = arc.child_node
+  self:_appendRunTrace(arc, child_node)
   return child_node
+end
+
+function UctModel:_bestAction(node)
+  self:_debugMessage("bestAction")
+  local max_metric, action, arc = _bestArc(
+    node, function(p_node, p_arc) return p_arc.max_x end)
+  return action
 end
 
 function UctModel:_defaultPolicy(node)
   self:_debugMessage("defaultPolicy")
-  while not _sandbox:isGameOver() do
-    if self._depth >= self.max_depth then
-      break
-    end
+  while not _sandbox:isGameOver() and self._depth < self.max_depth do
     self._depth = self._depth + 1
     local action = self.all_actions[torch.random(1, #self.all_actions)]
     self:_takeAction(action)
@@ -228,60 +247,45 @@ function UctModel:_defaultPolicy(node)
   return _sandbox:getMarioStats()
 end
 
-function UctModel:_estimateTerminalScore(terminal_stats)
-  return
-    (terminal_stats.score - self._root_stats.score) +
-    (terminal_stats.is_game_over and 0.0 or 10.0)
+function UctModel:_estimateStateScore(mario_stats)
+  local x = mario_stats.score - self._root_mario_stats.score
+  x = x + (mario_stats.is_game_over and 0.0 or 10.0)
+  x = math.min(math.max(x, 0.0), self.mario_score_ceil)
+  return x * 1.0 / self.mario_score_ceil
 end
 
-function UctModel:_backup(terminal_stats)
+function UctModel:_backup(mario_stats)
   self:_debugMessage("backup")
+  local x = self:_estimateStateScore(mario_stats)
   for i, t in ipairs(self._run_trace) do
     local arc, child_node = t[1], t[2]
     if arc then
       arc.num_visits = arc.num_visits + 1
-      local terminal_score = self:_estimateTerminalScore(terminal_stats)
-      arc.mean_x =
-        arc.mean_x +
-        (terminal_score - arc.mean_x) * 1.0 / arc.num_visits
-      arc.mean_x2 =
-        arc.mean_x2 +
-        (terminal_score * terminal_score - arc.mean_x) * 1.0 / arc.num_visits
-      if not arc.max_x or arc.max_x < terminal_score then
-        arc.max_x = terminal_score
-      end
+      local delta = x - arc.mean_x
+      arc.mean_x = arc.mean_x + delta * 1.0 / arc.num_visits
+      arc.var_x =
+        arc.var_x  + (delta * (x - arc.mean_x) - arc.var_x) / arc.num_visits
+      arc.max_x = math.max(arc.max_x, x)
     end
     child_node.num_visits = child_node.num_visits + 1
   end
 end
 
-function UctModel:_bestAction(node)
-  local max_num_visits = nil
-  local key_action = nil
-  local action_and_arcs = self:_randActionAndArcs(node)
-  for i, aa in ipairs(action_and_arcs) do
-    local a, arc = aa[1], aa[2]
-    if not max_num_visits or max_num_visits < arc.num_visits then
-      max_num_visits, key_action = arc.num_visits, a
-    end
-  end
-  return key_action
-end
-
 function UctModel:_search()
-  self:_debugMessage("search")
+  self:_debugMessage("////////// search //////////")
   local num_runs = 0
   while num_runs < self.max_num_runs do
     num_runs = num_runs + 1
     self:_debugMessage(string.format("run #%d", num_runs))
     self:_startSearch()
     local node = self:_treePolicy(self._root_node)
-    local terminal_stats = self:_defaultPolicy(node)
-    self:_backup(terminal_stats)
+    local mario_stats = self:_defaultPolicy(node)
+    self:_backup(mario_stats)
     self:_debugNodes()
   end
   local best_action = self:_bestAction(self._root_node)
   if not best_action then
+    self:_debugMessage("cannot select a best action")
     return false
   end
   self:_appendResultAction(best_action)
@@ -320,32 +324,33 @@ function UctModel:_debugNodes()
   if not self.enable_debug then
     return
   end
-  self:_log("================= debug ================")
+  self:_log("---------- debug ----------")
   self:_log("result actions: ")
   for i, a in ipairs(self.result_actions) do
-    self:_log(_actionToString(a))
+    self:_log(mario_util.actionToString(a))
   end
   local node_count = 0
   for s, node in pairs(self._nodes) do
     self:_log(string.format("node #%d", node_count + 1))
     self:_log(string.format("  num_visits = %d", node.num_visits))
     for a, arc in pairs(node.arcs) do
-      self:_log(string.format("  arc a = %s", _actionToString(a)))
+      self:_log(string.format("  arc a = %s", mario_util.actionToString(a)))
       self:_log(string.format("    num_visits = %d", arc.num_visits))
       self:_log(string.format("    mean_x     = %.2f", arc.mean_x))
-      self:_log(string.format("    mean_x2    = %.2f", arc.mean_x2))
+      self:_log(string.format("    var_x      = %.2f", arc.var_x))
       self:_log(string.format("    max_x      = %.2f", arc.max_x))
     end
     node_count = node_count + 1
   end
   self:_log(string.format("#nodes = %d", node_count))
-  self:_log("========================================")
+  self:_log("---------------------------")
 end
 
 function UctModel:main()
-  self:_log("UCT Main")
+  self:_log("********** BEGIN **********")
   while self:_search() do
   end
+  self:_log("********** END ************")
 end
 
 mario_uct_model = {
