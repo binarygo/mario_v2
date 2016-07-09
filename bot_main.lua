@@ -16,11 +16,13 @@ local function mario_uct_model_main()
     0x06, -- right + A
     0x05, -- right + B
   }
-  model.num_skip_frames = 12
-  model.result_actions = {}
 
+  model.game_save = nil
+  model.result_actions = {}
+  model.num_skip_frames = 12
+  
   model.min_num_visits_to_expand_node = 1
-  model.max_num_runs = 100
+  model.max_num_runs = 120
   model.max_depth = 60
   model.mario_score_cell = 200
   model.use_ucb1 = true

@@ -23,9 +23,10 @@ function UctModel:new()
       0x06, -- right + A
       0x05, -- right + B
     },
-
-    num_skip_frames = 12,
+    
+    game_save = nil,
     result_actions = {},
+    num_skip_frames = 12,
     
     min_num_visits_to_expand_node = 1,
     max_num_runs = 100,
@@ -45,7 +46,6 @@ function UctModel:new()
     _root_node = nil,
     _root_mario_stats = nil,
     _run_trace = nil,
-    _save = nil,
   }
   
   setmetatable(o, self)
@@ -60,6 +60,7 @@ end
 function UctModel:_takeAction(action)
   assert(action, "action must not be nil")
   _sandbox:advance(action, self.num_skip_frames)
+  self:_debugMessage(string.format("depth = %d", self._depth))
   self:_debugMessage(mario_util.actionToString(action))
 end
 
@@ -115,7 +116,7 @@ end
 
 function UctModel:_startSearch()
   self:_debugMessage("startSearch")
-  _sandbox:startGame(self._save)
+  _sandbox:startGame(self.game_save)
   
   local num_result_actions = #self.result_actions
   local played = false
@@ -126,8 +127,8 @@ function UctModel:_startSearch()
     played = true
   end
 
-  if played or not self._save then
-    self._save = _sandbox:saveGame()
+  if played or not self.game_save then
+    self.game_save = _sandbox:saveGame()
   end
 
   self._depth = 0
@@ -329,9 +330,16 @@ function UctModel:_debugNodes()
   for i, a in ipairs(self.result_actions) do
     self:_log(mario_util.actionToString(a))
   end
+
   local node_count = 0
+  node_ids = {}
   for s, node in pairs(self._nodes) do
-    self:_log(string.format("node #%d", node_count + 1))
+    node_count = node_count + 1
+    node_ids[node] = node_count
+  end
+    
+  for s, node in pairs(self._nodes) do
+    self:_log(string.format("node = #%d", node_ids[node]))
     self:_log(string.format("  num_visits = %d", node.num_visits))
     for a, arc in pairs(node.arcs) do
       self:_log(string.format("  arc a = %s", mario_util.actionToString(a)))
@@ -339,10 +347,11 @@ function UctModel:_debugNodes()
       self:_log(string.format("    mean_x     = %.2f", arc.mean_x))
       self:_log(string.format("    var_x      = %.2f", arc.var_x))
       self:_log(string.format("    max_x      = %.2f", arc.max_x))
+      self:_log(string.format("    max_x      = %.2f", arc.max_x))
+      self:_log(string.format("    child_node = #%d", node_ids[arc.child_node]))
     end
-    node_count = node_count + 1
   end
-  self:_log(string.format("#nodes = %d", node_count))
+  self:_log(string.format("# of nodes = %d", node_count))
   self:_log("---------------------------")
 end
 
