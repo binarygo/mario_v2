@@ -30,7 +30,7 @@ function UctModel:new()
     
     min_num_visits_to_expand_node = 1,
     max_num_runs = 100,
-    max_depth = 60,    
+    max_depth = 60,
     mario_score_ceil = 200,
     use_ucb1 = true,
     
@@ -249,10 +249,38 @@ function UctModel:_defaultPolicy(node)
 end
 
 function UctModel:_estimateStateScore(mario_stats)
-  local x = mario_stats.score - self._root_mario_stats.score
-  x = x + (mario_stats.is_game_over and 0.0 or 10.0)
-  x = math.min(math.max(x, 0.0), self.mario_score_ceil)
-  return x * 1.0 / self.mario_score_ceil
+  local a, b = self._root_mario_stats, mario_stats
+  
+  -- score change
+  local s = b.score - a.score
+  
+  -- still alive bonus
+  s = s + (b.is_game_over and 0.0 or 10.0)
+
+  -- forward displacement bonus
+  local dx = 0
+  if a.world ~= b.world or a.level ~= b.level then
+    dx = 256 + b.x - a.x
+  elseif a.block == 0 and b.block == 0 then  -- in bonus
+    dx = 0
+  elseif a.block == 0 then  -- leave bonus
+    dx = b.x
+  elseif b.block == 0 then  -- enter bonus
+    dx = 256 - a.x
+  elseif b.block > a.block then
+    dx = 256 + b.x - a.x
+  elseif b.block < a.block then
+    dx = -256 + b.x - a.x
+  else
+    dx = b.x - a.x
+  end
+  s = s + 0.1 * dx
+  
+  -- bound to [0, mario_score_ceil]
+  s = math.min(math.max(s, 0.0), self.mario_score_ceil)
+
+  -- scale to [0, 1]
+  return s * 1.0 / self.mario_score_ceil
 end
 
 function UctModel:_backup(mario_stats)

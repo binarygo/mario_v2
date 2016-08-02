@@ -98,6 +98,14 @@ function sandbox:getLevel()
   return memory.readbyte(0x0760)
 end
 
+function sandbox:getBlock()
+  return memory.readbyte(0x006D)
+end
+
+function sandbox:getX()
+  return memory.readbyte(0x0086)
+end
+
 function sandbox:getMarioScore()
   local score = 0
   local score_addr = 0x07DD
@@ -130,6 +138,10 @@ function sandbox:getMarioStats()
   return {
     score = self:getMarioScore(),
     is_game_over = self:isGameOver(),
+    world = self:getWorld(),
+    level = self:getLevel(),
+    block = self:getBlock(),
+    x = self:getX(),
   }
 end
 
