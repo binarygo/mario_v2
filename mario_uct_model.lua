@@ -60,7 +60,7 @@ end
 function UctModel:_takeAction(action)
   assert(action, "action must not be nil")
   _sandbox:advance(action, self.num_skip_frames)
-  self:_debugMessage(string.format("depth = %d", self._depth))
+  self:_debugMessage(string.format("depth = %d", self._depth or -1))
   self:_debugMessage(mario_util.actionToString(action))
 end
 
