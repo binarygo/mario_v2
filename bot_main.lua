@@ -3,6 +3,8 @@ require "torch"
 require "mario_uct_model"
 
 local function mario_uct_model_main()
+  init_data = torch.load("uct_model.sav.model.3")
+  
   local model = mario_uct_model.UctModel:new()
 
   model.all_actions = {
@@ -18,8 +20,10 @@ local function mario_uct_model_main()
   }
 
   model.game_save = nil
-  model.result_actions = {}
-  model.num_skip_frames = 12
+  -- model.result_actions = {}
+  -- model.num_skip_frames = 12
+  model.result_actions = init_data.result_actions
+  model.num_skip_frames = init_data.num_skip_frames
   
   model.min_num_visits_to_expand_node = 1
   model.max_num_runs = 120

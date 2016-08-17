@@ -375,7 +375,6 @@ function UctModel:_debugNodes()
       self:_log(string.format("    mean_x     = %.2f", arc.mean_x))
       self:_log(string.format("    var_x      = %.2f", arc.var_x))
       self:_log(string.format("    max_x      = %.2f", arc.max_x))
-      self:_log(string.format("    max_x      = %.2f", arc.max_x))
       self:_log(string.format("    child_node = #%d", node_ids[arc.child_node]))
     end
   end
