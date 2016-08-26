@@ -367,15 +367,15 @@ function UctModel:_debugNodes()
   end
     
   for s, node in pairs(self._nodes) do
-    self:_log(string.format("node = #%d", node_ids[node]))
-    self:_log(string.format("  num_visits = %d", node.num_visits))
+    print(string.format("node = #%d", node_ids[node]))
+    print(string.format("  num_visits = %d", node.num_visits))
     for a, arc in pairs(node.arcs) do
-      self:_log(string.format("  arc a = %s", mario_util.actionToString(a)))
-      self:_log(string.format("    num_visits = %d", arc.num_visits))
-      self:_log(string.format("    mean_x     = %.2f", arc.mean_x))
-      self:_log(string.format("    var_x      = %.2f", arc.var_x))
-      self:_log(string.format("    max_x      = %.2f", arc.max_x))
-      self:_log(string.format("    child_node = #%d", node_ids[arc.child_node]))
+      print(string.format("  arc a = %s", mario_util.actionToString(a)))
+      print(string.format("    num_visits = %d", arc.num_visits))
+      print(string.format("    mean_x     = %.2f", arc.mean_x))
+      print(string.format("    var_x      = %.2f", arc.var_x))
+      print(string.format("    max_x      = %.2f", arc.max_x))
+      print(string.format("    child_node = #%d", node_ids[arc.child_node]))
     end
   end
   self:_log(string.format("# of nodes = %d", node_count))
