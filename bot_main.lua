@@ -3,8 +3,8 @@ require "torch"
 require "mario_uct_model"
 
 local function mario_uct_model_main()
-  init_data = { result_actions = {}, num_skip_frames = 12 }
-  -- init_data = torch.load("uct_model.sav.model.4")
+  -- init_data = { result_actions = {}, num_skip_frames = 12 }
+  init_data = torch.load("uct_model.sav.model.4")
   
   local model = mario_uct_model.UctModel:new()
 
